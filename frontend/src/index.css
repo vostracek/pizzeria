@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  .btn {
+    @apply px-6 py-3 rounded-lg font-semibold transition-all duration-300 inline-block text-center cursor-pointer border-none;
+  }
+  
+  .btn-primary {
+    @apply bg-gradient-to-r from-primary-500 to-secondary-500 text-white hover:shadow-lg hover:-translate-y-1;
+  }
+  
+  .btn-success {
+    @apply bg-gradient-to-r from-green-500 to-green-600 text-white hover:shadow-lg hover:-translate-y-1;
+  }
+  
+  .card {
+    @apply bg-white rounded-xl shadow-md hover:shadow-xl hover:-translate-y-2 transition-all duration-300 overflow-hidden;
+  }
+  
+  .nav-link {
+    @apply text-gray-600 hover:text-primary-600 font-medium transition-colors duration-300;
+  }
+}
