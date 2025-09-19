@@ -3,100 +3,115 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useCart } from '../contexts/CartContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
+import { orderAPI } from '../services/api';
 
 const Cart = () => {
-  const [loading, setLoading] = useState(false);
-  const [promoCode, setPromoCode] = useState('');
-  const [promoDiscount, setPromoDiscount] = useState(0);
-  
-  const { 
-    items, 
-    updateQuantity, 
-    removeFromCart, // Používáme removeFromCart místo removeItem
-    clearCart, 
-    getTotalPrice, 
-    getTotalItems 
-  } = useCart();
-  
-  const { isAuthenticated } = useAuth();
+  const { items, updateQuantity, removeFromCart, clearCart, getTotalPrice } = useCart();
+  const { user } = useAuth(); // Zkontroluj, jestli je přihlášený
   const { showSuccess, showError } = useToast();
   const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
 
-  const subtotal = getTotalPrice();
-  const deliveryFee = subtotal > 500 ? 0 : 50;
-  const promoAmount = (subtotal * promoDiscount) / 100;
-  const total = subtotal + deliveryFee - promoAmount;
-
-  const applyPromoCode = () => {
-    const validCodes = {
-      'PIZZA20': 20,
-      'PRVNI10': 10,
-      'WEEKEND15': 15
-    };
-
-    if (validCodes[promoCode.toUpperCase()]) {
-      setPromoDiscount(validCodes[promoCode.toUpperCase()]);
-      showSuccess(`Promocode ${promoCode} byl aplikován! Sleva ${validCodes[promoCode.toUpperCase()]}%`);
+  // FUNKCE PRO ZMĚNU MNOŽSTVÍ
+  const handleQuantityChange = (id, newQuantity) => {
+    if (newQuantity < 1) {
+      removeFromCart(id);
+      showSuccess('Položka odebrána z košíku');
     } else {
-      showError('Neplatný promocode');
+      updateQuantity(id, newQuantity);
     }
   };
 
-  const handleCheckout = async () => {
-    if (!isAuthenticated) {
-      navigate('/login', { state: { from: { pathname: '/cart' } } });
+  // FUNKCE PRO ODEBRÁNÍ POLOŽKY
+  const handleRemoveItem = (id) => {
+    removeFromCart(id);
+    showSuccess('Položka odebrána z košíku');
+  };
+
+  // PŘÍMÁ OBJEDNÁVKA PRO PŘIHLÁŠENÉ UŽIVATELE
+  const handleDirectOrder = async (orderType = 'delivery') => {
+    if (!user) {
+      // Není přihlášený -> přesměruj na checkout
+      navigate('/checkout');
+      return;
+    }
+
+    // KONTROLA TELEFONU - pokud uživatel nemá telefon, přesměruj na checkout
+    if (!user.phone || user.phone.trim() === '') {
+      showError('Pro přímou objednávku je potřeba telefon. Dokončete objednávku na další stránce.');
+      navigate('/checkout');
       return;
     }
 
     setLoading(true);
-    
     try {
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      const orderId = Math.floor(Math.random() * 10000);
-      showSuccess('Objednávka byla úspěšně vytvořena!');
+      const orderData = {
+        items: items.map(item => ({
+          pizza: item.pizzaId || item.id,
+          quantity: item.quantity,
+          price: item.price
+        })),
+        customerInfo: {
+          name: user.name || 'Neznámé jméno',
+          phone: user.phone.trim(), // POVINNÉ
+          email: user.email || '',
+          address: orderType === 'delivery' ? 'Adresa bude upřesněna telefonicky' : '',
+          city: orderType === 'delivery' ? 'Praha' : '',
+          notes: `Objednávka z košíku - ${orderType === 'delivery' ? 'rozvoz' : 'vyzvednutí'}`
+        },
+        orderType,
+        totalPrice: getTotalPrice() + (orderType === 'delivery' ? 50 : 0),
+        deliveryFee: orderType === 'delivery' ? 50 : 0
+      };
+
+      console.log('Odesílám objednávku:', orderData); // DEBUG
+
+      const response = await orderAPI.create(orderData);
+      showSuccess('Objednávka byla úspěšně odeslána!');
       clearCart();
-      
       navigate('/order-success', { 
         state: { 
-          orderId, 
-          totalPrice: total.toFixed(0) 
-        } 
+          orderId: response.data.order._id,
+          totalPrice: orderData.totalPrice 
+        }
       });
     } catch (error) {
-      showError('Chyba při vytváření objednávky. Zkuste to znovu.');
+      console.error('Chyba při objednávce:', error);
+      const errorMsg = error.response?.data?.error || 'Chyba při odesílání objednávky. Zkuste to znovu.';
+      showError(errorMsg);
     } finally {
       setLoading(false);
     }
   };
 
+  // POKUD JE KOŠÍK PRÁZDNÝ
   if (items.length === 0) {
     return (
-      <div className="min-h-screen bg-gray-50 py-16 px-4">
-        <div className="max-w-2xl mx-auto text-center">
-          <div className="bg-white rounded-lg shadow-lg p-8">
-            <div className="w-24 h-24 bg-gray-100 rounded-full mx-auto mb-6 flex items-center justify-center">
-              <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div className="min-h-screen bg-gray-50 py-8 px-4">
+        <div className="max-w-2xl mx-auto">
+          
+          {/* PRÁZDNÝ KOŠÍK - MOBILNÍ OPTIMALIZOVANÝ */}
+          <div className="bg-white rounded-xl shadow-lg p-6 sm:p-8 text-center">
+            {/* IKONA PRÁZDNÉHO KOŠÍKU */}
+            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gray-200 rounded-full mx-auto mb-4 sm:mb-6 flex items-center justify-center">
+              <svg className="w-8 h-8 sm:w-10 sm:h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4m0 0L7 13m0 0l-1.5 6M7 13l-1.5-6m0 0L4 4M7 13h10m0 0v8a2 2 0 01-2 2H9a2 2 0 01-2-2v-8z"></path>
               </svg>
             </div>
             
-            <h2 className="text-2xl font-bold text-gray-800 mb-4">
+            <h2 className="text-xl sm:text-2xl font-bold text-gray-800 mb-3 sm:mb-4">
               Váš košík je prázdný
             </h2>
-            <p className="text-gray-600 mb-8">
-              Zatím jste si nevybrali žádnou pizzu. Podívejte se na naše menu 
-              a vyberte si ze široké nabídky čerstvých pizz.
+            <p className="text-gray-600 mb-6 sm:mb-8 leading-relaxed">
+              Zatím jste si nic nevybrali. Prohlédněte si naše menu a vyberte si své oblíbené pizzy!
             </p>
             
-            <Link
+            {/* MOBILNÍ CTA TLAČÍTKO */}
+            <Link 
               to="/"
-              className="inline-flex items-center px-6 py-3 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors font-semibold"
+              className="btn btn-primary w-full sm:w-auto sm:px-8 py-3 sm:py-4 text-base font-semibold touch-manipulation"
             >
-              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
-              </svg>
-              Vybrat pizzu
+              🍕 Zobrazit menu
             </Link>
           </div>
         </div>
@@ -105,99 +120,123 @@ const Cart = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-16 px-4">
-      <div className="max-w-6xl mx-auto">
+    <div className="min-h-screen bg-gray-50 py-4 sm:py-8">
+      <div className="max-w-4xl mx-auto px-4">
         
-        <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-800">Váš košík</h1>
-              <p className="text-gray-600 mt-2">
-                {getTotalItems()} položek
-              </p>
-            </div>
-            
+        {/* MOBILNÍ OPTIMALIZOVANÁ HLAVIČKA */}
+        <div className="flex items-center justify-between mb-6 sm:mb-8">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">
+            Košík ({items.length})
+          </h1>
+          
+          {/* TLAČÍTKO PRO VYPRÁZDNĚNÍ KOŠÍKU */}
+          {items.length > 0 && (
             <button
-              onClick={clearCart}
-              className="text-red-600 hover:text-red-700 font-medium"
+              onClick={() => {
+                clearCart();
+                showSuccess('Košík byl vyprázdněn');
+              }}
+              className="text-sm text-red-600 hover:text-red-700 font-medium px-3 py-2 touch-manipulation"
             >
-              Vyčistit košík
+              Vyprázdnit košík
             </button>
-          </div>
+          )}
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* RESPONZIVNÍ LAYOUT */}
+        <div className="space-y-6 lg:grid lg:grid-cols-3 lg:gap-8 lg:space-y-0">
           
-          <div className="lg:col-span-2 space-y-6">
+          {/* SEZNAM POLOŽEK */}
+          <div className="lg:col-span-2 space-y-4">
             {items.map((item) => (
-              <div key={item.pizza._id} className="bg-white rounded-lg shadow-lg p-6">
-                <div className="flex items-center space-x-6">
-                  
-                  <div className="w-24 h-24 flex-shrink-0">
-                    <img 
-                      src={item.pizza.image || '/images/pizza-placeholder.jpg'} 
-                      alt={item.pizza.name}
-                      className="w-full h-full object-cover rounded-lg"
-                    />
-                  </div>
-                  
-                  <div className="flex-1">
-                    <div className="flex justify-between items-start mb-2">
-                      <h3 className="text-xl font-semibold text-gray-800">{item.pizza.name}</h3>
-                      <button
-                        onClick={() => removeFromCart(item.pizza._id)}
-                        className="text-red-500 hover:text-red-700 p-1"
-                      >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
-                        </svg>
-                      </button>
+              <div key={item.id} className="bg-white rounded-lg shadow-md overflow-hidden">
+                
+                {/* MOBILNÍ LAYOUT POLOŽKY */}
+                <div className="p-4 sm:p-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center space-y-3 sm:space-y-0 sm:space-x-4">
+                    
+                    {/* OBRÁZEK PIZZY - na mobilu menší */}
+                    <div className="w-full sm:w-24 sm:h-24 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0">
+                      <img 
+                        src={item.image || '/api/placeholder/200/200'} 
+                        alt={item.name}
+                        className="w-full h-32 sm:h-full object-cover"
+                        loading="lazy"
+                      />
                     </div>
-                    
-                    {/* Zobrazení popisu pizzy */}
-                    <p className="text-gray-600 text-sm mb-2">{item.pizza.description}</p>
-                    
-                    {/* Zobrazení ingrediencí */}
-                    {item.pizza.ingredients && item.pizza.ingredients.length > 0 && (
-                      <div className="text-sm text-gray-500 mb-3">
-                        Ingredience: {item.pizza.ingredients.join(', ')}
-                      </div>
-                    )}
-                    
-                    <div className="flex justify-between items-center">
-                      <div className="flex items-center space-x-3">
-                        <button
-                          onClick={() => updateQuantity(item.pizza._id, Math.max(1, item.quantity - 1))}
-                          className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 12H4"></path>
-                          </svg>
-                        </button>
+
+                    {/* INFORMACE O PIZZE */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start space-y-2 sm:space-y-0">
                         
-                        <span className="font-medium text-lg w-8 text-center">
-                          {item.quantity}
-                        </span>
-                        
-                        <button
-                          onClick={() => updateQuantity(item.pizza._id, item.quantity + 1)}
-                          className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path>
-                          </svg>
-                        </button>
-                      </div>
-                      
-                      <div className="text-right">
-                        <div className="text-xl font-bold text-gray-800">
-                          {(item.pizza.price * item.quantity).toFixed(0)} Kč
+                        {/* NÁZEV A POPIS - BEZ VELIKOSTÍ */}
+                        <div className="flex-1">
+                          <h3 className="text-lg font-semibold text-gray-800 truncate">
+                            {item.name}
+                          </h3>
+                          <p className="text-sm text-gray-600 line-clamp-2 mt-1">
+                            {item.description}
+                          </p>
+                          {/* ZOBRAZÍ PŘÍSADY POKUD EXISTUJÍ */}
+                          {item.ingredients && (
+                            <p className="text-xs text-gray-500 mt-1 line-clamp-2">
+                              {item.ingredients}
+                            </p>
+                          )}
                         </div>
-                        {item.quantity > 1 && (
-                          <div className="text-sm text-gray-500">
-                            {item.pizza.price} Kč/ks
-                          </div>
-                        )}
+
+                        {/* CENA */}
+                        <div className="text-right sm:ml-4">
+                          <p className="text-lg font-bold text-primary-600">
+                            {item.price} Kč
+                          </p>
+                          {/* CELKOVÁ CENA ZA MNOŽSTVÍ */}
+                          {item.quantity > 1 && (
+                            <p className="text-sm text-gray-500">
+                              celkem: {item.price * item.quantity} Kč
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* OVLÁDÁNÍ MNOŽSTVÍ - MOBILNÍ OPTIMALIZOVANÉ */}
+                      <div className="flex items-center justify-between mt-4">
+                        
+                        {/* QUANTITY CONTROLS */}
+                        <div className="flex items-center space-x-3">
+                          <button
+                            onClick={() => handleQuantityChange(item.id, item.quantity - 1)}
+                            className="w-8 h-8 sm:w-10 sm:h-10 bg-gray-200 hover:bg-gray-300 rounded-full flex items-center justify-center touch-manipulation transition-colors"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 12H4"></path>
+                            </svg>
+                          </button>
+                          
+                          <span className="text-lg font-semibold w-8 text-center">
+                            {item.quantity}
+                          </span>
+                          
+                          <button
+                            onClick={() => handleQuantityChange(item.id, item.quantity + 1)}
+                            className="w-8 h-8 sm:w-10 sm:h-10 bg-gray-200 hover:bg-gray-300 rounded-full flex items-center justify-center touch-manipulation transition-colors"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                            </svg>
+                          </button>
+                        </div>
+
+                        {/* TLAČÍTKO SMAZAT */}
+                        <button
+                          onClick={() => handleRemoveItem(item.id)}
+                          className="text-red-600 hover:text-red-700 p-2 touch-manipulation"
+                          aria-label="Odebrat z košíku"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                          </svg>
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -206,98 +245,106 @@ const Cart = () => {
             ))}
           </div>
 
+          {/* SHRNUTÍ OBJEDNÁVKY - STICKY NA DESKTOPU */}
           <div className="lg:col-span-1">
-            <div className="bg-white rounded-lg shadow-lg p-6 sticky top-8">
-              <h2 className="text-xl font-semibold text-gray-800 mb-6">
-                Souhrn objednávky
-              </h2>
-              
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Máte promocode?
-                </label>
-                <div className="flex space-x-2">
-                  <input
-                    type="text"
-                    value={promoCode}
-                    onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
-                    placeholder="PROMOCODE"
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                  />
-                  <button
-                    onClick={applyPromoCode}
-                    disabled={!promoCode}
-                    className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
-                  >
-                    Použít
-                  </button>
-                </div>
-                <div className="mt-1 text-xs text-gray-500">
-                  Dostupné kódy: PIZZA20, PRVNI10, WEEKEND15
-                </div>
-              </div>
-              
-              <div className="space-y-3 mb-6">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Mezisoučet</span>
-                  <span className="font-medium">{subtotal.toFixed(0)} Kč</span>
-                </div>
-                
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Doprava</span>
-                  <span className="font-medium">
-                    {deliveryFee === 0 ? (
-                      <span className="text-green-600">Zdarma</span>
-                    ) : (
-                      `${deliveryFee} Kč`
-                    )}
-                  </span>
-                </div>
-                
-                {promoDiscount > 0 && (
-                  <div className="flex justify-between text-green-600">
-                    <span>Sleva ({promoDiscount}%)</span>
-                    <span>-{promoAmount.toFixed(0)} Kč</span>
+            <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 lg:sticky lg:top-4">
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">
+                Shrnutí objednávky
+              </h3>
+
+              {/* DETAIL POLOŽEK */}
+              <div className="space-y-2 mb-4">
+                {items.map((item) => (
+                  <div key={item.id} className="flex justify-between text-sm">
+                    <span className="text-gray-600 truncate pr-2">
+                      {item.quantity}× {item.name}
+                    </span>
+                    <span className="font-medium">
+                      {item.price * item.quantity} Kč
+                    </span>
                   </div>
-                )}
-                
-                {subtotal <= 500 && (
-                  <div className="text-sm text-gray-500 bg-blue-50 p-3 rounded-lg">
-                    Doprava zdarma při objednávce nad 500 Kč
-                  </div>
-                )}
-                
-                <hr className="border-gray-200" />
-                
-                <div className="flex justify-between text-lg font-bold">
-                  <span>Celkem</span>
-                  <span>{total.toFixed(0)} Kč</span>
-                </div>
+                ))}
               </div>
-              
-              <button
-                onClick={handleCheckout}
-                disabled={loading || items.length === 0}
-                className="w-full py-3 bg-gradient-to-r from-primary-500 to-secondary-500 text-white rounded-lg hover:from-primary-600 hover:to-secondary-600 disabled:opacity-50 disabled:cursor-not-allowed font-semibold transition-all duration-300"
-              >
-                {loading ? (
-                  <span className="flex items-center justify-center">
-                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Zpracovávám...
-                  </span>
-                ) : isAuthenticated ? (
-                  'Dokončit objednávku'
+
+              <hr className="my-4" />
+
+              {/* CELKOVÁ CENA */}
+              <div className="flex justify-between items-center mb-6">
+                <span className="text-lg font-semibold text-gray-800">
+                  Celkem:
+                </span>
+                <span className="text-xl font-bold text-primary-600">
+                  {getTotalPrice()} Kč
+                </span>
+              </div>
+
+              {/* CHECKOUT/OBJEDNÁVKA TLAČÍTKA - PODMÍNĚNÉ */}
+              <div className="space-y-3">
+                {user ? (
+                  // PŘIHLÁŠENÝ UŽIVATEL - PŘÍMÁ OBJEDNÁVKA
+                  <>
+                    <button
+                      onClick={() => handleDirectOrder('delivery')}
+                      disabled={loading}
+                      className="btn btn-primary w-full py-4 text-base font-semibold touch-manipulation"
+                    >
+                      {loading ? (
+                        <>
+                          <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          Odesílám objednávku...
+                        </>
+                      ) : (
+                        <>🚚 Objednat s rozvojem - {getTotalPrice() + 50} Kč</>
+                      )}
+                    </button>
+                    
+                    <button
+                      onClick={() => handleDirectOrder('pickup')}
+                      disabled={loading}
+                      className="btn btn-secondary w-full py-3 text-base font-medium touch-manipulation"
+                    >
+                      🏃 Objednat k vyzvednutí - {getTotalPrice()} Kč
+                    </button>
+                  </>
                 ) : (
-                  'Přihlásit se a objednat'
+                  // NEPŘIHLÁŠENÝ UŽIVATEL - CHECKOUT
+                  <>
+                    <Link
+                      to="/checkout"
+                      className="btn btn-primary w-full py-4 text-base font-semibold touch-manipulation text-center block"
+                    >
+                      🛒 Pokračovat k objednávce
+                    </Link>
+                    
+                    <div className="text-center">
+                      <p className="text-sm text-gray-600 mb-2">
+                        Pro rychlejší objednávání se přihlaste
+                      </p>
+                      <Link
+                        to="/login"
+                        className="text-primary-600 hover:text-primary-700 font-medium text-sm"
+                      >
+                        Přihlásit se
+                      </Link>
+                    </div>
+                  </>
                 )}
-              </button>
-              
-              <div className="mt-4 text-xs text-gray-500 text-center">
-                <p>Platba při doručení nebo kartou online</p>
-                <p className="mt-1">Odhadovaný čas doručení: 30-45 min</p>
+                
+                <Link
+                  to="/"
+                  className="btn btn-secondary w-full py-3 text-base font-medium touch-manipulation text-center block"
+                >
+                  ← Pokračovat v nákupu
+                </Link>
+              </div>
+
+              {/* DODATEČNÉ INFO */}
+              <div className="mt-6 text-xs text-gray-500 text-center">
+                <p>📞 Máte dotazy? Volejte: 722 272 252</p>
+                <p className="mt-1">🕐 Po - So: 17:00 - 20:30</p>
               </div>
             </div>
           </div>

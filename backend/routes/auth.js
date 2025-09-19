@@ -18,7 +18,7 @@ router.post("/create-admin", async (req, res) => {
       name,
       email,
       password,
-      role: "admin", // nastaví roli na admin
+      role: "admin",
     });
     await user.save();
 
@@ -41,16 +41,25 @@ router.post("/create-admin", async (req, res) => {
   }
 });
 
+// OPRAVENÁ REGISTRACE - PŘIDÁN TELEFON A ADRESA
 router.post("/register", async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password, phone, address } = req.body;
+    console.log('Registration data received:', req.body); // DEBUG
 
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({ error: "Email již existuje" });
     }
 
-    const user = new User({ name, email, password });
+    // VYTVOŘ UŽIVATELE S TELEFONEM A ADRESOU
+    const user = new User({ 
+      name, 
+      email, 
+      password,
+      phone: phone || undefined,    // PŘIDÁNO
+      address: address || undefined // PŘIDÁNO
+    });
     await user.save();
 
     const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, {
@@ -64,14 +73,18 @@ router.post("/register", async (req, res) => {
         id: user._id,
         name: user.name,
         email: user.email,
+        phone: user.phone,      // PŘIDÁNO
+        address: user.address,  // PŘIDÁNO
         role: user.role,
       },
     });
   } catch (error) {
-    res.status(400).json({ error: error.message }); // PŘIDÁN STŘEDNÍK
+    console.error('Registration error:', error); // DEBUG
+    res.status(400).json({ error: error.message });
   }
 });
 
+// OPRAVENÉ PŘIHLÁŠENÍ - VRACÍ TELEFON A ADRESU
 router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -84,9 +97,11 @@ router.post("/login", async (req, res) => {
     if (!isPasswordValid) {
       return res.status(401).json({ error: "Neplatné přihlašovací údaje" });
     }
+    
     const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, {
       expiresIn: "7d",
     });
+    
     res.json({
       message: "Přihlašení uspěšné",
       token,
@@ -94,6 +109,8 @@ router.post("/login", async (req, res) => {
         id: user._id,
         name: user.name,
         email: user.email,
+        phone: user.phone,      // PŘIDÁNO
+        address: user.address,  // PŘIDÁNO
         role: user.role,
       },
     });

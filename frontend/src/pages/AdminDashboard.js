@@ -1,252 +1,361 @@
 import React, { useState, useEffect } from 'react';
-import { orderAPI, reservationAPI } from '../services/api';
+import { Link } from 'react-router-dom';
+import { useToast } from '../contexts/ToastContext';
+import { orderAPI, reservationAPI, pizzaAPI } from '../services/api';
 
 const AdminDashboard = () => {
+  const { showError } = useToast();
+  const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     todayOrders: 0,
     todayRevenue: 0,
-    pendingOrders: 0,
-    todayReservations: 0
+    activeOrders: 0,
+    todayReservations: 0,
+    totalMenuItems: 0,
+    avgOrderValue: 0
   });
   const [recentOrders, setRecentOrders] = useState([]);
-  const [recentReservations, setRecentReservations] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [todayReservations, setTodayReservations] = useState([]);
 
+  // STATUS KONFIGURACE
+  const statusConfig = {
+    pending: { name: 'Čeká', color: 'bg-yellow-100 text-yellow-800', icon: '⏳' },
+    confirmed: { name: 'Potvrzeno', color: 'bg-blue-100 text-blue-800', icon: '✅' },
+    preparing: { name: 'Připravuje se', color: 'bg-orange-100 text-orange-800', icon: '👨‍🍳' },
+    ready: { name: 'Připraveno', color: 'bg-green-100 text-green-800', icon: '🍕' },
+    delivered: { name: 'Doručeno', color: 'bg-gray-100 text-gray-800', icon: '🚚' },
+    cancelled: { name: 'Zrušeno', color: 'bg-red-100 text-red-800', icon: '❌' }
+  };
+
+  // NAČTENÍ DAT PŘI SPUŠTĚNÍ
   useEffect(() => {
     loadDashboardData();
+    // Automatické obnovení každých 30 sekund
+    const interval = setInterval(loadDashboardData, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   const loadDashboardData = async () => {
     try {
-      const [ordersRes, reservationsRes] = await Promise.all([
+      // PARALELNÍ NAČÍTÁNÍ DAT PRO RYCHLOST
+      const [ordersResponse, reservationsResponse, pizzasResponse] = await Promise.all([
         orderAPI.getAllOrders(),
-        reservationAPI.getAll()
+        reservationAPI.getAll(),
+        pizzaAPI.getAll()
       ]);
 
-      const orders = ordersRes.data;
-      const reservations = reservationsRes.data;
+      const orders = ordersResponse.data;
+      const reservations = reservationsResponse.data;
+      const pizzas = pizzasResponse.data;
 
-      // Výpočet statistik
+      // FILTROVÁNÍ DNEŠNÍCH DAT
       const today = new Date().toDateString();
       const todayOrders = orders.filter(order => 
         new Date(order.createdAt).toDateString() === today
       );
-      
-      const todayReservations = reservations.filter(reservation => 
+      const todayReservationsList = reservations.filter(reservation => 
         new Date(reservation.date).toDateString() === today
       );
 
-      const pendingOrders = orders.filter(order => 
-        ['pending', 'confirmed', 'preparing'].includes(order.status)
-      );
+      // KALKULACE STATISTIK
+      const todayRevenue = todayOrders.reduce((sum, order) => sum + order.totalPrice, 0);
+      const activeOrders = orders.filter(order => 
+        ['pending', 'confirmed', 'preparing', 'ready'].includes(order.status)
+      ).length;
+      const avgOrderValue = todayOrders.length > 0 ? todayRevenue / todayOrders.length : 0;
 
+      // AKTUALIZACE STAVU
       setStats({
         todayOrders: todayOrders.length,
-        todayRevenue: todayOrders.reduce((sum, order) => sum + order.totalPrice, 0),
-        pendingOrders: pendingOrders.length,
-        todayReservations: todayReservations.length
+        todayRevenue,
+        activeOrders,
+        todayReservations: todayReservationsList.length,
+        totalMenuItems: pizzas.length,
+        avgOrderValue
       });
 
-      setRecentOrders(orders.slice(0, 5));
-      setRecentReservations(reservations.slice(0, 5));
+      setRecentOrders(orders.slice(0, 5)); // Posledních 5 objednávek
+      setTodayReservations(todayReservationsList.slice(0, 5)); // Dnešních 5 rezervací
 
     } catch (error) {
-      console.error('Chyba při načítání dat:', error);
+      console.error('Chyba při načítání dashboard dat:', error);
+      showError('Chyba při načítání dat');
     } finally {
       setLoading(false);
     }
   };
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'pending': return 'bg-yellow-100 text-yellow-800';
-      case 'confirmed': return 'bg-blue-100 text-blue-800';
-      case 'preparing': return 'bg-orange-100 text-orange-800';
-      case 'ready': return 'bg-green-100 text-green-800';
-      case 'delivered': return 'bg-gray-100 text-gray-800';
-      case 'cancelled': return 'bg-red-100 text-red-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
-  };
+  // RYCHLÉ AKCE
+  const quickActions = [
+    { title: 'Správa objednávek', icon: '📋', link: '/admin/orders', color: 'bg-blue-500' },
+    { title: 'Rezervace', icon: '📅', link: '/admin/reservations', color: 'bg-green-500' },
+    { title: 'Menu pizzy', icon: '🍕', link: '/admin/menu', color: 'bg-red-500' },
+    { title: 'Nová pizza', icon: '➕', link: '/admin/menu', color: 'bg-purple-500' }
+  ];
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center min-h-screen">
-        <div className="text-lg text-gray-600">Načítám dashboard...</div>
+      <div className="min-h-screen bg-gray-50 py-8">
+        <div className="max-w-7xl mx-auto px-4">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Načítám dashboard...</p>
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
+    <div className="min-h-screen bg-gray-50 py-4 sm:py-8">
       <div className="max-w-7xl mx-auto px-4">
+        
+        {/* HLAVIČKA */}
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-8">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-2">
+              Dashboard - Pizza Fresca
+            </h1>
+            <p className="text-gray-600">
+              Přehled dneška: {new Date().toLocaleDateString('cs-CZ', { 
+                weekday: 'long', 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+              })}
+            </p>
+          </div>
+          <button
+            onClick={loadDashboardData}
+            className="mt-4 sm:mt-0 btn btn-secondary px-4 py-2 text-sm"
+          >
+            🔄 Obnovit data
+          </button>
+        </div>
+
+        {/* STATISTIKY - RESPONZIVNÍ GRID */}
+        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 sm:gap-6 mb-8">
+          
+          {/* DNEŠNÍ OBJEDNÁVKY */}
+          <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
+            <div className="flex items-center">
+              <div className="text-2xl sm:text-3xl mr-3">📦</div>
+              <div>
+                <div className="text-lg sm:text-2xl font-bold text-blue-600">
+                  {stats.todayOrders}
+                </div>
+                <div className="text-xs sm:text-sm text-gray-600">Dnešní objednávky</div>
+              </div>
+            </div>
+          </div>
+
+          {/* DNEŠNÍ TRŽBY */}
+          <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
+            <div className="flex items-center">
+              <div className="text-2xl sm:text-3xl mr-3">💰</div>
+              <div>
+                <div className="text-lg sm:text-2xl font-bold text-green-600">
+                  {stats.todayRevenue.toLocaleString()} Kč
+                </div>
+                <div className="text-xs sm:text-sm text-gray-600">Dnešní tržby</div>
+              </div>
+            </div>
+          </div>
+
+          {/* AKTIVNÍ OBJEDNÁVKY */}
+          <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
+            <div className="flex items-center">
+              <div className="text-2xl sm:text-3xl mr-3">🔥</div>
+              <div>
+                <div className="text-lg sm:text-2xl font-bold text-orange-600">
+                  {stats.activeOrders}
+                </div>
+                <div className="text-xs sm:text-sm text-gray-600">Aktivní objednávky</div>
+              </div>
+            </div>
+          </div>
+
+          {/* DNEŠNÍ REZERVACE */}
+          <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
+            <div className="flex items-center">
+              <div className="text-2xl sm:text-3xl mr-3">📅</div>
+              <div>
+                <div className="text-lg sm:text-2xl font-bold text-purple-600">
+                  {stats.todayReservations}
+                </div>
+                <div className="text-xs sm:text-sm text-gray-600">Dnešní rezervace</div>
+              </div>
+            </div>
+          </div>
+
+          {/* MENU POLOŽKY */}
+          <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
+            <div className="flex items-center">
+              <div className="text-2xl sm:text-3xl mr-3">🍕</div>
+              <div>
+                <div className="text-lg sm:text-2xl font-bold text-red-600">
+                  {stats.totalMenuItems}
+                </div>
+                <div className="text-xs sm:text-sm text-gray-600">Druhů pizz</div>
+              </div>
+            </div>
+          </div>
+
+          {/* PRŮMĚRNÁ OBJEDNÁVKA */}
+          <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
+            <div className="flex items-center">
+              <div className="text-2xl sm:text-3xl mr-3">📊</div>
+              <div>
+                <div className="text-lg sm:text-2xl font-bold text-indigo-600">
+                  {Math.round(stats.avgOrderValue)} Kč
+                </div>
+                <div className="text-xs sm:text-sm text-gray-600">Průměr objednávky</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* RYCHLÉ AKCE */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-800">Admin Dashboard</h1>
-          <p className="text-gray-600">Přehled pizzerie Pizza Fresca</p>
-        </div>
-
-        {/* Statistiky */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <div className="flex items-center">
-              <div className="p-3 rounded-full bg-blue-100 text-blue-600">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path>
-                </svg>
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Dnešní objednávky</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.todayOrders}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <div className="flex items-center">
-              <div className="p-3 rounded-full bg-green-100 text-green-600">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"></path>
-                </svg>
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Dnešní tržby</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.todayRevenue} Kč</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <div className="flex items-center">
-              <div className="p-3 rounded-full bg-orange-100 text-orange-600">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                </svg>
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Čekající objednávky</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.pendingOrders}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <div className="flex items-center">
-              <div className="p-3 rounded-full bg-purple-100 text-purple-600">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
-                </svg>
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Dnešní rezervace</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.todayReservations}</p>
-              </div>
-            </div>
+          <h2 className="text-xl font-semibold text-gray-800 mb-4">Rychlé akce</h2>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {quickActions.map((action, index) => (
+              <Link
+                key={index}
+                to={action.link}
+                className={`${action.color} text-white rounded-lg p-4 sm:p-6 hover:opacity-90 transition-opacity`}
+              >
+                <div className="text-2xl sm:text-3xl mb-2">{action.icon}</div>
+                <div className="font-semibold text-sm sm:text-base">{action.title}</div>
+              </Link>
+            ))}
           </div>
         </div>
 
-        <div className="grid lg:grid-cols-2 gap-8">
-          {/* Nedávné objednávky */}
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold text-gray-800">Nedávné objednávky</h2>
-              <a href="/admin/orders" className="text-primary-600 hover:text-primary-800 text-sm">
-                Zobrazit všechny
-              </a>
+        {/* OBSAH - RESPONZIVNÍ LAYOUT */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          
+          {/* POSLEDNÍ OBJEDNÁVKY */}
+          <div className="bg-white rounded-lg shadow-md">
+            <div className="p-4 sm:p-6 border-b border-gray-200">
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-semibold text-gray-800">
+                  Poslední objednávky
+                </h3>
+                <Link 
+                  to="/admin/orders" 
+                  className="text-primary-600 hover:text-primary-700 text-sm font-medium"
+                >
+                  Zobrazit všechny →
+                </Link>
+              </div>
             </div>
             
-            <div className="space-y-4">
-              {recentOrders.map(order => (
-                <div key={order._id} className="border-l-4 border-primary-500 pl-4">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <p className="font-medium text-gray-900">{order.customerInfo.name}</p>
-                      <p className="text-sm text-gray-600">{order.customerInfo.phone}</p>
-                      <p className="text-sm text-gray-500">
-                        {new Date(order.createdAt).toLocaleString('cs-CZ')}
-                      </p>
+            <div className="divide-y divide-gray-200">
+              {recentOrders.length === 0 ? (
+                <div className="p-6 text-center text-gray-500">
+                  Žádné objednávky
+                </div>
+              ) : (
+                recentOrders.map((order) => (
+                  <div key={order._id} className="p-4 sm:p-6 hover:bg-gray-50">
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <div className="font-semibold text-gray-800">
+                          #{order.orderNumber || order._id.slice(-8).toUpperCase()}
+                        </div>
+                        <div className="text-sm text-gray-600">
+                          {order.customerInfo?.name || 'Neznámý zákazník'}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-bold text-primary-600">
+                          {order.totalPrice} Kč
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {new Date(order.createdAt).toLocaleTimeString('cs-CZ')}
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <p className="font-bold text-gray-900">{order.totalPrice} Kč</p>
-                      <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(order.status)}`}>
-                        {order.status}
+                    
+                    <div className="flex justify-between items-center">
+                      <div className="text-sm text-gray-600">
+                        {order.items?.length || 0} položek
+                      </div>
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusConfig[order.status]?.color || 'bg-gray-100 text-gray-800'}`}>
+                        {statusConfig[order.status]?.icon} {statusConfig[order.status]?.name || order.status}
                       </span>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
 
-          {/* Nedávné rezervace */}
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold text-gray-800">Nedávné rezervace</h2>
-              <a href="/admin/reservations" className="text-primary-600 hover:text-primary-800 text-sm">
-                Zobrazit všechny
-              </a>
+          {/* DNEŠNÍ REZERVACE */}
+          <div className="bg-white rounded-lg shadow-md">
+            <div className="p-4 sm:p-6 border-b border-gray-200">
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-semibold text-gray-800">
+                  Dnešní rezervace
+                </h3>
+                <Link 
+                  to="/admin/reservations" 
+                  className="text-primary-600 hover:text-primary-700 text-sm font-medium"
+                >
+                  Zobrazit všechny →
+                </Link>
+              </div>
             </div>
             
-            <div className="space-y-4">
-              {recentReservations.map(reservation => (
-                <div key={reservation._id} className="border-l-4 border-green-500 pl-4">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <p className="font-medium text-gray-900">{reservation.name}</p>
-                      <p className="text-sm text-gray-600">{reservation.phone}</p>
-                      <p className="text-sm text-gray-500">
-                        {new Date(reservation.date).toLocaleDateString('cs-CZ')} v {reservation.time}
-                      </p>
+            <div className="divide-y divide-gray-200">
+              {todayReservations.length === 0 ? (
+                <div className="p-6 text-center text-gray-500">
+                  Žádné rezervace na dnes
+                </div>
+              ) : (
+                todayReservations.map((reservation) => (
+                  <div key={reservation._id} className="p-4 sm:p-6 hover:bg-gray-50">
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <div className="font-semibold text-gray-800">
+                          {reservation.name}
+                        </div>
+                        <div className="text-sm text-gray-600">
+                          📞 {reservation.phone}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-bold text-gray-800">
+                          {reservation.time}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {reservation.guests} {reservation.guests === 1 ? 'osoba' : reservation.guests < 5 ? 'osoby' : 'osob'}
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <p className="font-bold text-gray-900">{reservation.guests} hostů</p>
-                      <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(reservation.status)}`}>
-                        {reservation.status}
+                    
+                    {reservation.notes && (
+                      <div className="text-sm text-gray-600 italic mt-2">
+                        "{reservation.notes}"
+                      </div>
+                    )}
+                    
+                    <div className="mt-2">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        reservation.status === 'confirmed' ? 'bg-green-100 text-green-800' :
+                        reservation.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-red-100 text-red-800'
+                      }`}>
+                        {reservation.status === 'confirmed' ? '✅ Potvrzeno' :
+                         reservation.status === 'pending' ? '⏳ Čeká' : '❌ Zrušeno'}
                       </span>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
-        </div>
-
-        {/* Rychlé akce */}
-        <div className="mt-8 grid md:grid-cols-3 gap-6">
-          <a href="/admin/orders" className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
-            <div className="text-center">
-              <div className="w-12 h-12 bg-blue-100 rounded-full mx-auto mb-4 flex items-center justify-center">
-                <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path>
-                </svg>
-              </div>
-              <h3 className="text-lg font-semibold text-gray-800">Správa objednávek</h3>
-              <p className="text-gray-600 text-sm">Upravit statusy a zobrazit detaily</p>
-            </div>
-          </a>
-
-          <a href="/admin/reservations" className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
-            <div className="text-center">
-              <div className="w-12 h-12 bg-green-100 rounded-full mx-auto mb-4 flex items-center justify-center">
-                <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
-                </svg>
-              </div>
-              <h3 className="text-lg font-semibold text-gray-800">Správa rezervací</h3>
-              <p className="text-gray-600 text-sm">Potvrdit a spravovat rezervace</p>
-            </div>
-          </a>
-
-          <a href="/admin/menu" className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
-            <div className="text-center">
-              <div className="w-12 h-12 bg-orange-100 rounded-full mx-auto mb-4 flex items-center justify-center">
-                <svg className="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4"></path>
-                </svg>
-              </div>
-              <h3 className="text-lg font-semibold text-gray-800">Správa menu</h3>
-              <p className="text-gray-600 text-sm">Přidat, upravit nebo smazat pizzy</p>
-            </div>
-          </a>
         </div>
       </div>
     </div>

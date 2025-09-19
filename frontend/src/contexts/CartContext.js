@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useReducer } from 'react';
+// frontend/src/contexts/CartContext.js - JEDNODUCHÁ VERZE BEZ VELIKOSTÍ
+import React, { createContext, useContext, useState } from 'react';
 
 const CartContext = createContext();
 
@@ -10,87 +11,83 @@ export const useCart = () => {
   return context;
 };
 
-const cartReducer = (state, action) => {
-  switch (action.type) {
-    case 'ADD_ITEM':
-      const existingItem = state.items.find(item => item.pizza._id === action.payload._id);
+export const CartProvider = ({ children }) => {
+  const [items, setItems] = useState([]);
+
+  // PŘIDÁNÍ PIZZY DO KOŠÍKU - POUŽÍVÁ CELÝ PIZZA OBJEKT
+  const addToCart = (pizza) => {
+    const cartItem = {
+      id: pizza._id, // MongoDB ObjectId
+      pizzaId: pizza._id, // Pro API volání
+      name: pizza.name,
+      price: parseFloat(pizza.price) || 200,
+      quantity: 1,
+      image: pizza.image || '/api/placeholder/200/200',
+      description: pizza.description,
+      ingredients: Array.isArray(pizza.ingredients) 
+        ? pizza.ingredients.join(', ') 
+        : (pizza.ingredients || 'Základní ingredience'),
+      // Uloží celý pizza objekt pro případné budoucí použití
+      pizza: pizza
+    };
+
+    setItems(currentItems => {
+      const existingItem = currentItems.find(item => item.id === cartItem.id);
       
       if (existingItem) {
-        return {
-          ...state,
-          items: state.items.map(item =>
-            item.pizza._id === action.payload._id
-              ? { ...item, quantity: item.quantity + 1 }
-              : item
-          )
-        };
-      }
-      
-      return {
-        ...state,
-        items: [...state.items, { pizza: action.payload, quantity: 1 }]
-      };
-      
-    case 'REMOVE_ITEM':
-      return {
-        ...state,
-        items: state.items.filter(item => item.pizza._id !== action.payload)
-      };
-      
-    case 'UPDATE_QUANTITY':
-      return {
-        ...state,
-        items: state.items.map(item =>
-          item.pizza._id === action.payload.id
-            ? { ...item, quantity: action.payload.quantity }
+        // Zvyš množství existující položky
+        return currentItems.map(item =>
+          item.id === cartItem.id
+            ? { ...item, quantity: item.quantity + 1 }
             : item
-        ).filter(item => item.quantity > 0)
-      };
-      
-    case 'CLEAR_CART':
-      return {
-        ...state,
-        items: []
-      };
-      
-    default:
-      return state;
-  }
-};
-
-export const CartProvider = ({ children }) => {
-  const [state, dispatch] = useReducer(cartReducer, {
-    items: []
-  });
-
-  const addToCart = (pizza) => {
-    dispatch({ type: 'ADD_ITEM', payload: pizza });
+        );
+      } else {
+        // Přidej novou položku
+        return [...currentItems, cartItem];
+      }
+    });
   };
 
-  const removeFromCart = (pizzaId) => {
-    dispatch({ type: 'REMOVE_ITEM', payload: pizzaId });
+  const removeFromCart = (itemId) => {
+    setItems(currentItems => currentItems.filter(item => item.id !== itemId));
   };
 
-  const updateQuantity = (pizzaId, quantity) => {
-    dispatch({ type: 'UPDATE_QUANTITY', payload: { id: pizzaId, quantity } });
+  const updateQuantity = (itemId, newQuantity) => {
+    if (newQuantity <= 0) {
+      removeFromCart(itemId);
+      return;
+    }
+    
+    setItems(currentItems =>
+      currentItems.map(item =>
+        item.id === itemId
+          ? { ...item, quantity: parseInt(newQuantity) || 1 }
+          : item
+      )
+    );
   };
 
   const clearCart = () => {
-    dispatch({ type: 'CLEAR_CART' });
+    setItems([]);
   };
 
   const getTotalPrice = () => {
-    return state.items.reduce((total, item) => {
-      return total + (item.pizza.price * item.quantity);
+    return items.reduce((total, item) => {
+      const itemPrice = parseFloat(item.price) || 0;
+      const itemQuantity = parseInt(item.quantity) || 0;
+      return total + (itemPrice * itemQuantity);
     }, 0);
   };
 
   const getTotalItems = () => {
-    return state.items.reduce((total, item) => total + item.quantity, 0);
+    return items.reduce((total, item) => {
+      const itemQuantity = parseInt(item.quantity) || 0;
+      return total + itemQuantity;
+    }, 0);
   };
 
   const value = {
-    items: state.items,
+    items,
     addToCart,
     removeFromCart,
     updateQuantity,
@@ -99,5 +96,9 @@ export const CartProvider = ({ children }) => {
     getTotalItems
   };
 
-  return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
+  return (
+    <CartContext.Provider value={value}>
+      {children}
+    </CartContext.Provider>
+  );
 };

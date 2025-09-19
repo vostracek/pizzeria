@@ -1,19 +1,18 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
-
 const userSchema = new mongoose.Schema(
   {
     name: {
       type: String,
-      required: true,  // Povinné pole (registrace bez jména neprojde)
-      trim: true,  // Automaticky odstraní mezery na začátku/konci
+      required: true,
+      trim: true,
     },
     email: {
       type: String,
       required: true,
-      unique: true,  // V databázi může být jen jeden email (indexuje pole)
-      lowercase: true, // Automaticky převede na malá písmena
+      unique: true,
+      lowercase: true,
     },
     password: {
       type: String,
@@ -22,22 +21,32 @@ const userSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ["customer", "admin"], // Povoluje jen tyto hodnoty
-      default: "customer", // Pokud nezadáme, bude customer
+      enum: ["customer", "admin"],
+      default: "customer",
     },
-    phone: String,
+    phone: {
+      type: String, // ZŮSTÁVÁ String!
+      trim: true
+    },
     address: {
-      street: String, // Vnořený objekt - nepovinné pole
-      city: String, // Typ jen String (bez required)
-      zipCode: String,
-    },
+      street: {
+        type: String,
+        trim: true
+      },
+      city: {
+        type: String,
+        trim: true
+      },
+      zipCode: {
+        type: String,
+        trim: true
+      }
+    }
   },
   {
-    timpestamps: true,
+    timestamps: true, // OPRAVENO - bylo "timpestamps"
   }
 );
-
-
 
 userSchema.pre("save", async function (next) {    
   if (!this.isModified("password")) return next();

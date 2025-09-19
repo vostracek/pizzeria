@@ -5,100 +5,92 @@ const admin = require("../middleware/admin");
 const auth = require("../middleware/auth");
 const router = express.Router();
 
+// POST /api/orders - vytvoření objednávky (VEŘEJNÉ - bez auth)
 router.post("/", async (req, res) => {
   try {
-    const order = new Order(req.body);
-    await order.save();
-    await order.populate("items.pizza");
+    console.log("Přijata objednávka:", req.body);
+    
+    const { items, customerInfo, orderType, totalPrice, deliveryFee } = req.body;
 
-    console.log("Nová objednávka:", order);
-
-    res.status(201).json({
-      message: "Objednávka byla úspěšně vytvořena",
-      order,
-    });
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-});
-// Api na novou objednávku
-router.post("/", auth, async (req, res) => {
-  try {
-    const { items, deliveryAddress, phone, notes } = req.body;
-
-    let totalAmount = 0;
-    const orderItems = [];
-
+    // VALIDACE POLOŽEK
+    const validatedItems = [];
     for (let item of items) {
       const pizza = await Pizza.findById(item.pizza);
       if (!pizza) {
-        return res
-          .status(404)
-          .json({ error: `Pizza s ID ${item.pizza} nebyla nalezena` });
-      }
-
-      const sizeInfo = pizza.sizes.find((s) => s.size === item.size);
-      if (!sizeInfo) {
-        return res.status(400).json({
-          error: `Velikost ${item.size} není dostupná pro ${pizza.name}`,
+        return res.status(404).json({ 
+          error: `Pizza s ID ${item.pizza} nebyla nalezena` 
         });
       }
 
-      const itemTotal = sizeInfo.price * item.quantity;
-      totalAmount += itemTotal;
+      // Validace ceny
+      if (item.price !== pizza.price) {
+        console.warn(`Rozdílná cena pro ${pizza.name}: očekáváno ${pizza.price}, přijato ${item.price}`);
+      }
 
-      orderItems.push({
+      validatedItems.push({
         pizza: item.pizza,
         quantity: item.quantity,
-        size: item.size,
-        price: itemTotal,
+        price: pizza.price // Použij cenu z databáze
       });
     }
 
+    // VYTVOŘENÍ OBJEDNÁVKY
     const order = new Order({
-      user: req.user._id,
-      items: orderItems,
-      totalAmount,
-      deliveryAddress,
-      phone,
-      notes,
+      items: validatedItems,
+      customerInfo,
+      orderType,
+      totalPrice,
+      deliveryFee: deliveryFee || 0
     });
 
     await order.save();
-    await order.populate("items.pizza user");
+    await order.populate("items.pizza");
 
-    res.status(201).json(order);
+    console.log("Objednávka vytvořena:", order);
+
+    res.status(201).json({
+      message: "Objednávka byla úspěšně vytvořena",
+      order
+    });
   } catch (error) {
+    console.error("Chyba při vytváření objednávky:", error);
     res.status(400).json({ error: error.message });
   }
 });
 
-// Získa objednávek od uživatele
+// GET /api/orders - získá objednávky uživatele (S AUTH)
 router.get("/", auth, async (req, res) => {
   try {
-    const orders = await Order.find({ user: req.user._id })
+    // Najdi objednávky podle emailu uživatele
+    const orders = await Order.find({ 
+      'customerInfo.email': req.user.email 
+    })
       .populate("items.pizza")
       .sort({ createdAt: -1 });
 
     res.json(orders);
   } catch (error) {
+    console.error("Chyba při načítání objednávek:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
-router.get("all", auth, admin, async (req, res) => {
+// GET /api/orders/all - všechny objednávky (POUZE ADMIN)
+router.get("/all", auth, admin, async (req, res) => {
   try {
     const orders = await Order.find()
-      .populate("items.pizza user")
+      .populate("items.pizza")
       .sort({ createdAt: -1 });
 
+    console.log(`Načteno ${orders.length} objednávek`);
     res.json(orders);
   } catch (error) {
+    console.error("Chyba při načítání všech objednávek:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// PUT změna statusu (pouze admin)
+// PUT /api/orders/:id/status - změna statusu (POUZE ADMIN)
 router.put("/:id/status", auth, admin, async (req, res) => {
   try {
     const { status } = req.body;
@@ -107,30 +99,17 @@ router.put("/:id/status", auth, admin, async (req, res) => {
       req.params.id,
       { status },
       { new: true, runValidators: true }
-    ).populate("items.pizza user");
+    ).populate("items.pizza");
 
     if (!order) {
       return res.status(404).json({ error: "Objednávka nenalezena" });
     }
 
+    console.log(`Status objednávky ${order.orderNumber} změněn na: ${status}`);
     res.json(order);
   } catch (error) {
+    console.error("Chyba při změně statusu:", error);
     res.status(400).json({ error: error.message });
-  }
-});
-
-// get all orders admin
-router.get("/all", auth, admin, async (req, res) => {
-  try {
-    const orders = await Order.find()
-      .populate("items.pizza")
-      .populate("user")
-      .sort({ createdAt: -1 });
-
-    res.json(orders);
-  } catch (error) {
-    console.log("Error in /all endpoint:", error);
-    res.status(500).json({ error: error.message });
   }
 });
 
