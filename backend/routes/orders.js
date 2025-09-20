@@ -113,4 +113,14 @@ router.put("/:id/status", auth, admin, async (req, res) => {
   }
 });
 
+const emailService = require('../services/emailService');
+
+// V POST /api/orders po uložení objednávky:
+await order.save();
+await order.populate('items.pizza');
+
+// Pošli emaily
+await emailService.sendOrderConfirmation(order);
+await emailService.sendNewOrderNotification(order);
+
 module.exports = router;
