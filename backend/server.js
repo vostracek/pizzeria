@@ -5,9 +5,8 @@ const cors = require("cors");
 
 const pizzaRoutes = require("./routes/pizzas");
 const authRoutes = require("./routes/auth");
-const orderRoutes = require("./routes/orders")
+const orderRoutes = require("./routes/orders");
 const reservationRoutes = require('./routes/reservations');
-
 
 dotenv.config();
 
@@ -15,8 +14,6 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
-app.use('/api/reservations', reservationRoutes);
-app.use('/api/orders', orderRoutes);
 
 const connectDB = async () => {
   try {
@@ -39,7 +36,8 @@ app.get("/", (req, res) => {
 
 app.use("/api/pizzas", pizzaRoutes);
 app.use("/api/auth", authRoutes);
-app.use('/api/orders', orderRoutes)
+app.use("/api/orders", orderRoutes);
+app.use('/api/reservations', reservationRoutes);
 
 const PORT = process.env.PORT || 5000;
 

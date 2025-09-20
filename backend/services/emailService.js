@@ -3,8 +3,8 @@ const nodemailer = require('nodemailer');
 
 class EmailService {
   constructor() {
-    // SMTP konfigurace - použij Gmail, Seznam.cz nebo jiný provider
-    this.transporter = nodemailer.createTransporter({
+    // SMTP konfigurace - OPRAVENO createTransport (BEZ 'ER'!)
+    this.transporter = nodemailer.createTransport({
       service: 'gmail', // Nebo 'seznam' pro seznam.cz
       auth: {
         user: process.env.EMAIL_USER,     // např. pizzafresca@gmail.com
@@ -19,7 +19,7 @@ class EmailService {
       const mailOptions = {
         from: process.env.EMAIL_USER,
         to: order.customerInfo.email,
-        subject: `Pizza Fresca - Potvrzení objednávky #${order.orderNumber}`,
+        subject: `Pizza Fresca - Potvrzení objednávky #${order.orderNumber || order._id.toString().slice(-8).toUpperCase()}`,
         html: this.getOrderConfirmationTemplate(order)
       };
 
@@ -36,7 +36,7 @@ class EmailService {
       const mailOptions = {
         from: process.env.EMAIL_USER,
         to: process.env.OWNER_EMAIL, // Email majitele pizzerie
-        subject: `🍕 NOVÁ OBJEDNÁVKA #${order.orderNumber} - ${order.totalPrice} Kč`,
+        subject: `🍕 NOVÁ OBJEDNÁVKA #${order.orderNumber || order._id.toString().slice(-8).toUpperCase()} - ${order.totalPrice} Kč`,
         html: this.getOwnerNotificationTemplate(order)
       };
 
@@ -64,6 +64,23 @@ class EmailService {
     }
   }
 
+  // NOTIFIKACE MAJITELI O NOVÉ REZERVACI
+  async sendNewReservationNotification(reservation) {
+    try {
+      const mailOptions = {
+        from: process.env.EMAIL_USER,
+        to: process.env.OWNER_EMAIL,
+        subject: `🔔 NOVÁ REZERVACE - ${reservation.name} - ${new Date(reservation.date).toLocaleDateString('cs-CZ')}`,
+        html: this.getReservationOwnerTemplate(reservation)
+      };
+
+      await this.transporter.sendMail(mailOptions);
+      console.log('✅ Email notifikace o rezervaci odeslán majiteli');
+    } catch (error) {
+      console.error('❌ Chyba při odesílání notifikace o rezervaci:', error);
+    }
+  }
+
   // STATUS UPDATE OBJEDNÁVKY
   async sendOrderStatusUpdate(order, oldStatus, newStatus) {
     if (!order.customerInfo.email) return;
@@ -80,7 +97,7 @@ class EmailService {
       const mailOptions = {
         from: process.env.EMAIL_USER,
         to: order.customerInfo.email,
-        subject: `Pizza Fresca - Aktualizace objednávky #${order.orderNumber}`,
+        subject: `Pizza Fresca - Aktualizace objednávky #${order.orderNumber || order._id.toString().slice(-8).toUpperCase()}`,
         html: this.getStatusUpdateTemplate(order, newStatus, statusMessages[newStatus])
       };
 
@@ -117,17 +134,22 @@ class EmailService {
         <h2 style="color: #2d3748; margin-top: 0;">Děkujeme za vaši objednávku!</h2>
         
         <div style="background: #f7fafc; border-radius: 8px; padding: 20px; margin: 20px 0;">
-          <h3 style="margin-top: 0; color: #4a5568;">Objednávka #${order.orderNumber}</h3>
+          <h3 style="margin-top: 0; color: #4a5568;">Objednávka #${order.orderNumber || order._id.toString().slice(-8).toUpperCase()}</h3>
           <p><strong>Zákazník:</strong> ${order.customerInfo.name}</p>
           <p><strong>Telefon:</strong> ${order.customerInfo.phone}</p>
           <p><strong>Typ:</strong> ${order.orderType === 'delivery' ? '🚚 Rozvoz' : '🏃 Vyzvednutí'}</p>
-          ${order.orderType === 'delivery' ? `<p><strong>Adresa:</strong> ${order.customerInfo.address}, ${order.customerInfo.city}</p>` : ''}
+          ${order.orderType === 'delivery' && order.customerInfo.address ? `<p><strong>Adresa:</strong> ${order.customerInfo.address}${order.customerInfo.city ? `, ${order.customerInfo.city}` : ''}</p>` : ''}
           <p><strong>Objednáno:</strong> ${new Date(order.createdAt).toLocaleString('cs-CZ')}</p>
         </div>
 
         <h3 style="color: #4a5568;">Vaše objednávka:</h3>
         <table style="width: 100%; border-collapse: collapse; margin: 10px 0;">
           ${itemsList}
+          ${order.deliveryFee && order.deliveryFee > 0 ? `
+          <tr>
+            <td style="padding: 10px; border-bottom: 1px solid #eee;">Poplatek za doručení</td>
+            <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: right;">${order.deliveryFee} Kč</td>
+          </tr>` : ''}
           <tr>
             <td style="padding: 15px 10px; border-top: 2px solid #e53e3e; font-weight: bold;">
               CELKEM
@@ -143,8 +165,8 @@ class EmailService {
         <div style="background: #e6fffa; border-radius: 8px; padding: 20px; margin: 20px 0;">
           <h4 style="margin-top: 0; color: #065f46;">📞 Kontakt</h4>
           <p style="margin: 5px 0;"><strong>Telefon:</strong> 722 272 252</p>
-          <p style="margin: 5px 0;"><strong>Adresa:</strong> Hany Kvapilové 19, Praha 4</p>
-          <p style="margin: 5px 0;"><strong>Otevírací doba:</strong> Po-So 17:00-20:30</p>
+          <p style="margin: 5px 0;"><strong>Adresa:</strong> Karlova 15, Praha 1</p>
+          <p style="margin: 5px 0;"><strong>Otevírací doba:</strong> Po-Ne 17:00-22:00</p>
         </div>
 
         <p style="color: #718096; font-size: 14px; text-align: center; margin-top: 30px;">
@@ -166,7 +188,7 @@ class EmailService {
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
       <div style="background: #dc2626; color: white; padding: 20px; text-align: center;">
         <h1 style="margin: 0;">🚨 NOVÁ OBJEDNÁVKA</h1>
-        <h2 style="margin: 10px 0 0;">Objednávka #${order.orderNumber}</h2>
+        <h2 style="margin: 10px 0 0;">Objednávka #${order.orderNumber || order._id.toString().slice(-8).toUpperCase()}</h2>
       </div>
 
       <div style="padding: 20px; background: white;">
@@ -181,7 +203,7 @@ class EmailService {
         <p><strong>Jméno:</strong> ${order.customerInfo.name}</p>
         <p><strong>Telefon:</strong> <a href="tel:${order.customerInfo.phone}">${order.customerInfo.phone}</a></p>
         ${order.customerInfo.email ? `<p><strong>Email:</strong> ${order.customerInfo.email}</p>` : ''}
-        ${order.orderType === 'delivery' ? `<p><strong>Adresa:</strong> ${order.customerInfo.address}, ${order.customerInfo.city}</p>` : ''}
+        ${order.orderType === 'delivery' && order.customerInfo.address ? `<p><strong>Adresa:</strong> ${order.customerInfo.address}${order.customerInfo.city ? `, ${order.customerInfo.city}` : ''}</p>` : ''}
 
         <h3>🍕 Položky:</h3>
         <div style="background: #f9fafb; padding: 15px; border-radius: 8px;">
@@ -225,15 +247,50 @@ class EmailService {
 
         <div style="background: #e6fffa; border-radius: 8px; padding: 20px; margin: 20px 0;">
           <h4 style="margin-top: 0; color: #065f46;">📍 Kde nás najdete</h4>
-          <p style="margin: 5px 0;"><strong>Adresa:</strong> Hany Kvapilové 19, Praha 4</p>
+          <p style="margin: 5px 0;"><strong>Adresa:</strong> Karlova 15, Praha 1</p>
           <p style="margin: 5px 0;"><strong>Telefon:</strong> 722 272 252</p>
-          <p style="margin: 5px 0;"><strong>Otevírací doba:</strong> Po-So 17:00-20:30</p>
+          <p style="margin: 5px 0;"><strong>Otevírací doba:</strong> Po-Ne 17:00-22:00</p>
         </div>
 
         <p style="color: #718096; font-size: 14px; text-align: center; margin-top: 30px;">
           Těšíme se na vaši návštěvu! 🍕<br>
           Pokud potřebujete rezervaci změnit, zavolejte nám na 722 272 252
         </p>
+      </div>
+    </div>
+    `;
+  }
+
+  // TEMPLATE PRO MAJITELE O NOVÉ REZERVACI
+  getReservationOwnerTemplate(reservation) {
+    return `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="background: #7c3aed; color: white; padding: 20px; text-align: center;">
+        <h1 style="margin: 0;">🔔 NOVÁ REZERVACE</h1>
+        <h2 style="margin: 10px 0 0;">${new Date(reservation.date).toLocaleDateString('cs-CZ')} v ${reservation.time}</h2>
+      </div>
+
+      <div style="padding: 20px; background: white;">
+        <div style="background: #f3e8ff; border-radius: 8px; padding: 15px; margin: 15px 0;">
+          <h3 style="margin-top: 0; color: #6b21a8;">⏰ NOVÁ REZERVACE STOLU</h3>
+          <p><strong>Datum:</strong> ${new Date(reservation.date).toLocaleDateString('cs-CZ')}</p>
+          <p><strong>Čas:</strong> ${reservation.time}</p>
+          <p><strong>Počet hostů:</strong> ${reservation.guests}</p>
+        </div>
+
+        <h3>👤 Zákazník:</h3>
+        <p><strong>Jméno:</strong> ${reservation.name}</p>
+        <p><strong>Telefon:</strong> <a href="tel:${reservation.phone}">${reservation.phone}</a></p>
+        <p><strong>Email:</strong> ${reservation.email}</p>
+
+        ${reservation.notes ? `<h3>💬 Poznámka:</h3><p style="background: #f3e8ff; padding: 10px; border-radius: 5px;">${reservation.notes}</p>` : ''}
+
+        <div style="text-align: center; margin-top: 20px;">
+          <a href="http://localhost:3000/admin/reservations" 
+             style="background: #7c3aed; color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; display: inline-block;">
+            📋 Spravovat rezervace
+          </a>
+        </div>
       </div>
     </div>
     `;
@@ -253,7 +310,7 @@ class EmailService {
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: white;">
       <div style="background: #4f46e5; color: white; padding: 20px; text-align: center;">
         <h1 style="margin: 0;">${statusIcons[status]} Aktualizace objednávky</h1>
-        <p style="margin: 10px 0 0;">Pizza Fresca - Objednávka #${order.orderNumber}</p>
+        <p style="margin: 10px 0 0;">Pizza Fresca - Objednávka #${order.orderNumber || order._id.toString().slice(-8).toUpperCase()}</p>
       </div>
 
       <div style="padding: 30px;">

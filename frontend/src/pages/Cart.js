@@ -7,7 +7,7 @@ import { orderAPI } from '../services/api';
 
 const Cart = () => {
   const { items, updateQuantity, removeFromCart, clearCart, getTotalPrice } = useCart();
-  const { user } = useAuth(); // Zkontroluj, jestli je přihlášený
+  const { user } = useAuth();
   const { showSuccess, showError } = useToast();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
@@ -28,17 +28,15 @@ const Cart = () => {
     showSuccess('Položka odebrána z košíku');
   };
 
-  // PŘÍMÁ OBJEDNÁVKA PRO PŘIHLÁŠENÉ UŽIVATELE
-  const handleDirectOrder = async (orderType = 'delivery') => {
+  // RYCHLÁ OBJEDNÁVKA POUZE PRO VYZVEDNUTÍ (bez adresy)
+  const handleQuickPickup = async () => {
     if (!user) {
-      // Není přihlášený -> přesměruj na checkout
       navigate('/checkout');
       return;
     }
 
-    // KONTROLA TELEFONU - pokud uživatel nemá telefon, přesměruj na checkout
     if (!user.phone || user.phone.trim() === '') {
-      showError('Pro přímou objednávku je potřeba telefon. Dokončete objednávku na další stránce.');
+      showError('Pro rychlou objednávku je potřeba telefon. Dokončete objednávku na další stránce.');
       navigate('/checkout');
       return;
     }
@@ -53,18 +51,18 @@ const Cart = () => {
         })),
         customerInfo: {
           name: user.name || 'Neznámé jméno',
-          phone: user.phone.trim(), // POVINNÉ
+          phone: user.phone.trim(),
           email: user.email || '',
-          address: orderType === 'delivery' ? 'Adresa bude upřesněna telefonicky' : '',
-          city: orderType === 'delivery' ? 'Praha' : '',
-          notes: `Objednávka z košíku - ${orderType === 'delivery' ? 'rozvoz' : 'vyzvednutí'}`
+          address: '', // Prázdné pro vyzvednutí
+          city: '',
+          notes: 'Rychlá objednávka k vyzvednutí z košíku'
         },
-        orderType,
-        totalPrice: getTotalPrice() + (orderType === 'delivery' ? 50 : 0),
-        deliveryFee: orderType === 'delivery' ? 50 : 0
+        orderType: 'pickup',
+        totalPrice: getTotalPrice(),
+        deliveryFee: 0
       };
 
-      console.log('Odesílám objednávku:', orderData); // DEBUG
+      console.log('Odesílám rychlou objednávku:', orderData);
 
       const response = await orderAPI.create(orderData);
       showSuccess('Objednávka byla úspěšně odeslána!');
@@ -90,9 +88,7 @@ const Cart = () => {
       <div className="min-h-screen bg-gray-50 py-8 px-4">
         <div className="max-w-2xl mx-auto">
           
-          {/* PRÁZDNÝ KOŠÍK - MOBILNÍ OPTIMALIZOVANÝ */}
           <div className="bg-white rounded-xl shadow-lg p-6 sm:p-8 text-center">
-            {/* IKONA PRÁZDNÉHO KOŠÍKU */}
             <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gray-200 rounded-full mx-auto mb-4 sm:mb-6 flex items-center justify-center">
               <svg className="w-8 h-8 sm:w-10 sm:h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4m0 0L7 13m0 0l-1.5 6M7 13l-1.5-6m0 0L4 4M7 13h10m0 0v8a2 2 0 01-2 2H9a2 2 0 01-2-2v-8z"></path>
@@ -106,7 +102,6 @@ const Cart = () => {
               Zatím jste si nic nevybrali. Prohlédněte si naše menu a vyberte si své oblíbené pizzy!
             </p>
             
-            {/* MOBILNÍ CTA TLAČÍTKO */}
             <Link 
               to="/"
               className="btn btn-primary w-full sm:w-auto sm:px-8 py-3 sm:py-4 text-base font-semibold touch-manipulation"
@@ -123,13 +118,11 @@ const Cart = () => {
     <div className="min-h-screen bg-gray-50 py-4 sm:py-8">
       <div className="max-w-4xl mx-auto px-4">
         
-        {/* MOBILNÍ OPTIMALIZOVANÁ HLAVIČKA */}
         <div className="flex items-center justify-between mb-6 sm:mb-8">
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">
             Košík ({items.length})
           </h1>
           
-          {/* TLAČÍTKO PRO VYPRÁZDNĚNÍ KOŠÍKU */}
           {items.length > 0 && (
             <button
               onClick={() => {
@@ -143,7 +136,6 @@ const Cart = () => {
           )}
         </div>
 
-        {/* RESPONZIVNÍ LAYOUT */}
         <div className="space-y-6 lg:grid lg:grid-cols-3 lg:gap-8 lg:space-y-0">
           
           {/* SEZNAM POLOŽEK */}
@@ -151,11 +143,9 @@ const Cart = () => {
             {items.map((item) => (
               <div key={item.id} className="bg-white rounded-lg shadow-md overflow-hidden">
                 
-                {/* MOBILNÍ LAYOUT POLOŽKY */}
                 <div className="p-4 sm:p-6">
                   <div className="flex flex-col sm:flex-row sm:items-center space-y-3 sm:space-y-0 sm:space-x-4">
                     
-                    {/* OBRÁZEK PIZZY - na mobilu menší */}
                     <div className="w-full sm:w-24 sm:h-24 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0">
                       <img 
                         src={item.image || '/api/placeholder/200/200'} 
@@ -165,11 +155,9 @@ const Cart = () => {
                       />
                     </div>
 
-                    {/* INFORMACE O PIZZE */}
                     <div className="flex-1 min-w-0">
                       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start space-y-2 sm:space-y-0">
                         
-                        {/* NÁZEV A POPIS - BEZ VELIKOSTÍ */}
                         <div className="flex-1">
                           <h3 className="text-lg font-semibold text-gray-800 truncate">
                             {item.name}
@@ -177,7 +165,6 @@ const Cart = () => {
                           <p className="text-sm text-gray-600 line-clamp-2 mt-1">
                             {item.description}
                           </p>
-                          {/* ZOBRAZÍ PŘÍSADY POKUD EXISTUJÍ */}
                           {item.ingredients && (
                             <p className="text-xs text-gray-500 mt-1 line-clamp-2">
                               {item.ingredients}
@@ -185,12 +172,10 @@ const Cart = () => {
                           )}
                         </div>
 
-                        {/* CENA */}
                         <div className="text-right sm:ml-4">
                           <p className="text-lg font-bold text-primary-600">
                             {item.price} Kč
                           </p>
-                          {/* CELKOVÁ CENA ZA MNOŽSTVÍ */}
                           {item.quantity > 1 && (
                             <p className="text-sm text-gray-500">
                               celkem: {item.price * item.quantity} Kč
@@ -199,10 +184,8 @@ const Cart = () => {
                         </div>
                       </div>
 
-                      {/* OVLÁDÁNÍ MNOŽSTVÍ - MOBILNÍ OPTIMALIZOVANÉ */}
                       <div className="flex items-center justify-between mt-4">
                         
-                        {/* QUANTITY CONTROLS */}
                         <div className="flex items-center space-x-3">
                           <button
                             onClick={() => handleQuantityChange(item.id, item.quantity - 1)}
@@ -227,7 +210,6 @@ const Cart = () => {
                           </button>
                         </div>
 
-                        {/* TLAČÍTKO SMAZAT */}
                         <button
                           onClick={() => handleRemoveItem(item.id)}
                           className="text-red-600 hover:text-red-700 p-2 touch-manipulation"
@@ -245,14 +227,13 @@ const Cart = () => {
             ))}
           </div>
 
-          {/* SHRNUTÍ OBJEDNÁVKY - STICKY NA DESKTOPU */}
+          {/* SHRNUTÍ OBJEDNÁVKY */}
           <div className="lg:col-span-1">
             <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 lg:sticky lg:top-4">
               <h3 className="text-lg font-semibold text-gray-800 mb-4">
                 Shrnutí objednávky
               </h3>
 
-              {/* DETAIL POLOŽEK */}
               <div className="space-y-2 mb-4">
                 {items.map((item) => (
                   <div key={item.id} className="flex justify-between text-sm">
@@ -268,7 +249,6 @@ const Cart = () => {
 
               <hr className="my-4" />
 
-              {/* CELKOVÁ CENA */}
               <div className="flex justify-between items-center mb-6">
                 <span className="text-lg font-semibold text-gray-800">
                   Celkem:
@@ -278,15 +258,26 @@ const Cart = () => {
                 </span>
               </div>
 
-              {/* CHECKOUT/OBJEDNÁVKA TLAČÍTKA - PODMÍNĚNÉ */}
+              {/* OBJEDNÁVKA TLAČÍTKA - OPRAVENÉ */}
               <div className="space-y-3">
-                {user ? (
-                  // PŘIHLÁŠENÝ UŽIVATEL - PŘÍMÁ OBJEDNÁVKA
+                {/* HLAVNÍ TLAČÍTKO - CHECKOUT PRO KOMPLETNÍ OBJEDNÁVKU */}
+                <Link
+                  to="/checkout"
+                  className="btn btn-primary w-full py-4 text-base font-semibold touch-manipulation text-center block"
+                >
+                  🛒 Pokračovat k objednávce
+                </Link>
+                
+                {/* RYCHLÉ VYZVEDNUTÍ POUZE PRO PŘIHLÁŠENÉ S TELEFONEM */}
+                {user && user.phone && (
                   <>
+                    <div className="text-center text-sm text-gray-500 my-2">
+                      nebo rychlá objednávka:
+                    </div>
                     <button
-                      onClick={() => handleDirectOrder('delivery')}
+                      onClick={handleQuickPickup}
                       disabled={loading}
-                      className="btn btn-primary w-full py-4 text-base font-semibold touch-manipulation"
+                      className="btn btn-secondary w-full py-3 text-base font-medium touch-manipulation"
                     >
                       {loading ? (
                         <>
@@ -294,43 +285,28 @@ const Cart = () => {
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                           </svg>
-                          Odesílám objednávku...
+                          Odesílám...
                         </>
                       ) : (
-                        <>🚚 Objednat s rozvojem - {getTotalPrice() + 50} Kč</>
+                        <>🏃 Rychle k vyzvednutí - {getTotalPrice()} Kč</>
                       )}
                     </button>
-                    
-                    <button
-                      onClick={() => handleDirectOrder('pickup')}
-                      disabled={loading}
-                      className="btn btn-secondary w-full py-3 text-base font-medium touch-manipulation"
-                    >
-                      🏃 Objednat k vyzvednutí - {getTotalPrice()} Kč
-                    </button>
                   </>
-                ) : (
-                  // NEPŘIHLÁŠENÝ UŽIVATEL - CHECKOUT
-                  <>
+                )}
+                
+                {/* INFO PRO NEPŘIHLÁŠENÉ */}
+                {!user && (
+                  <div className="text-center">
+                    <p className="text-sm text-gray-600 mb-2">
+                      Pro rychlejší objednávání se přihlaste
+                    </p>
                     <Link
-                      to="/checkout"
-                      className="btn btn-primary w-full py-4 text-base font-semibold touch-manipulation text-center block"
+                      to="/login"
+                      className="text-primary-600 hover:text-primary-700 font-medium text-sm"
                     >
-                      🛒 Pokračovat k objednávce
+                      Přihlásit se
                     </Link>
-                    
-                    <div className="text-center">
-                      <p className="text-sm text-gray-600 mb-2">
-                        Pro rychlejší objednávání se přihlaste
-                      </p>
-                      <Link
-                        to="/login"
-                        className="text-primary-600 hover:text-primary-700 font-medium text-sm"
-                      >
-                        Přihlásit se
-                      </Link>
-                    </div>
-                  </>
+                  </div>
                 )}
                 
                 <Link
@@ -341,7 +317,6 @@ const Cart = () => {
                 </Link>
               </div>
 
-              {/* DODATEČNÉ INFO */}
               <div className="mt-6 text-xs text-gray-500 text-center">
                 <p>📞 Máte dotazy? Volejte: 722 272 252</p>
                 <p className="mt-1">🕐 Po - So: 17:00 - 20:30</p>

@@ -1,9 +1,9 @@
 import React from "react";
-import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
 import { CartProvider } from "./contexts/CartContext";
 import { ToastProvider } from "./contexts/ToastContext";
-import { useAuth } from "./contexts/AuthContext"; // PŘIDEJ TENTO IMPORT
+import { useAuth } from "./contexts/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 import MobileHeader from "./components/MobileHeader";
 
@@ -24,8 +24,6 @@ import AdminMenu from "./pages/AdminMenu";
 
 // POMOCNÁ KOMPONENTA PRO ROUTES
 function AppRoutes() {
-  const { user } = useAuth(); // TEĎ JE UVNITŘ KOMPONENTY
-
   return (
     <Routes>
       {/* Veřejné stránky */}
@@ -35,12 +33,7 @@ function AppRoutes() {
       <Route path="/how-its-made" element={<HowItsMade />} />
       <Route path="/reservations" element={<Reservations />} />
       <Route path="/cart" element={<Cart />} />
-      <Route
-        path="/checkout"
-        element={
-          user ? <Navigate to="/cart" replace /> : <Checkout />
-        }
-      />
+      <Route path="/checkout" element={<Checkout />} />
       <Route path="/order-success" element={<OrderSuccess />} />
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />

@@ -3,13 +3,14 @@ const Order = require("../models/Order");
 const Pizza = require("../models/Pizza");
 const admin = require("../middleware/admin");
 const auth = require("../middleware/auth");
+const emailService = require("../services/emailService");
 const router = express.Router();
 
 // POST /api/orders - vytvoření objednávky (VEŘEJNÉ - bez auth)
 router.post("/", async (req, res) => {
   try {
     console.log("Přijata objednávka:", req.body);
-    
+
     const { items, customerInfo, orderType, totalPrice, deliveryFee } = req.body;
 
     // VALIDACE POLOŽEK
@@ -17,20 +18,22 @@ router.post("/", async (req, res) => {
     for (let item of items) {
       const pizza = await Pizza.findById(item.pizza);
       if (!pizza) {
-        return res.status(404).json({ 
-          error: `Pizza s ID ${item.pizza} nebyla nalezena` 
+        return res.status(404).json({
+          error: `Pizza s ID ${item.pizza} nebyla nalezena`,
         });
       }
 
       // Validace ceny
       if (item.price !== pizza.price) {
-        console.warn(`Rozdílná cena pro ${pizza.name}: očekáváno ${pizza.price}, přijato ${item.price}`);
+        console.warn(
+          `Rozdílná cena pro ${pizza.name}: očekáváno ${pizza.price}, přijato ${item.price}`
+        );
       }
 
       validatedItems.push({
         pizza: item.pizza,
         quantity: item.quantity,
-        price: pizza.price // Použij cenu z databáze
+        price: pizza.price, // Použij cenu z databáze
       });
     }
 
@@ -40,17 +43,30 @@ router.post("/", async (req, res) => {
       customerInfo,
       orderType,
       totalPrice,
-      deliveryFee: deliveryFee || 0
+      deliveryFee: deliveryFee || 0,
     });
 
     await order.save();
     await order.populate("items.pizza");
 
-    console.log("Objednávka vytvořena:", order);
+    // POŠLI EMAILY
+    try {
+      if (customerInfo.email) {
+        await emailService.sendOrderConfirmation(order);
+        console.log(`Potvrzení objednávky odesláno na: ${customerInfo.email}`);
+      }
+      await emailService.sendNewOrderNotification(order);
+      console.log("Notifikace majiteli odeslána");
+    } catch (emailError) {
+      console.error("Chyba při odesílání emailů:", emailError);
+      // Nepřeruš proces - objednávka je uložená
+    }
+
+    console.log("Objednávka vytvořena:", order.orderNumber || order._id);
 
     res.status(201).json({
       message: "Objednávka byla úspěšně vytvořena",
-      order
+      order,
     });
   } catch (error) {
     console.error("Chyba při vytváření objednávky:", error);
@@ -62,8 +78,8 @@ router.post("/", async (req, res) => {
 router.get("/", auth, async (req, res) => {
   try {
     // Najdi objednávky podle emailu uživatele
-    const orders = await Order.find({ 
-      'customerInfo.email': req.user.email 
+    const orders = await Order.find({
+      "customerInfo.email": req.user.email,
     })
       .populate("items.pizza")
       .sort({ createdAt: -1 });
@@ -105,22 +121,12 @@ router.put("/:id/status", auth, admin, async (req, res) => {
       return res.status(404).json({ error: "Objednávka nenalezena" });
     }
 
-    console.log(`Status objednávky ${order.orderNumber} změněn na: ${status}`);
+    console.log(`Status objednávky ${order.orderNumber || order._id} změněn na: ${status}`);
     res.json(order);
   } catch (error) {
     console.error("Chyba při změně statusu:", error);
     res.status(400).json({ error: error.message });
   }
 });
-
-const emailService = require('../services/emailService');
-
-// V POST /api/orders po uložení objednávky:
-await order.save();
-await order.populate('items.pizza');
-
-// Pošli emaily
-await emailService.sendOrderConfirmation(order);
-await emailService.sendNewOrderNotification(order);
 
 module.exports = router;

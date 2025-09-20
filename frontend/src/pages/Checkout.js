@@ -6,32 +6,34 @@ import { useAuth } from '../contexts/AuthContext';
 import { orderAPI } from '../services/api';
 
 const Checkout = () => {
-  // HOOKS PRO STAV KOMPONENTY
   const { items, getTotalPrice, clearCart } = useCart();
   const { showSuccess, showError } = useToast();
-  const { user } = useAuth(); // Přidáno pro kontrolu uživatele
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [orderType, setOrderType] = useState('delivery');
   
-  // FORMULÁŘ DATA - PŘEDVYPLŇ POKUD JE UŽIVATEL PŘIHLÁŠENÝ
+  // FORMULÁŘ DATA - PŘEDVYPLŇ Z UŽIVATELSKÉHO PROFILU
   const [formData, setFormData] = useState({
-    name: user?.name || '',
+    name: '',
     phone: '',
-    email: user?.email || '',
+    email: '',
     address: '',
     city: '',
     notes: ''
   });
 
-  // AKTUALIZUJ FORMULÁŘ PŘI ZMĚNĚ UŽIVATELE
+  // PŘEDVYPLŇ FORMULÁŘ Z UŽIVATELSKÉHO PROFILU
   useEffect(() => {
     if (user) {
-      setFormData(prev => ({
-        ...prev,
-        name: user.name || prev.name,
-        email: user.email || prev.email
-      }));
+      setFormData({
+        name: user.name || '',
+        phone: user.phone || '',
+        email: user.email || '',
+        address: user.address?.street || '',
+        city: user.address?.city || '',
+        notes: ''
+      });
     }
   }, [user]);
 
@@ -55,10 +57,9 @@ const Checkout = () => {
     setLoading(true);
 
     try {
-      // PŘÍPRAVA DAT PRO API - KOMPATIBILNÍ S BACKENDEM
       const orderData = {
         items: items.map(item => ({
-          pizza: item.pizzaId || item.id, // MongoDB ObjectId
+          pizza: item.pizzaId || item.id,
           quantity: item.quantity,
           price: item.price
         })),
@@ -75,7 +76,7 @@ const Checkout = () => {
         deliveryFee
       };
 
-      console.log('Odesílám objednávku:', orderData); // Debug log
+      console.log('Odesílám objednávku:', orderData);
 
       const response = await orderAPI.create(orderData);
       
@@ -89,8 +90,6 @@ const Checkout = () => {
       });
     } catch (error) {
       console.error('Chyba při vytváření objednávky:', error);
-      console.error('Response data:', error.response?.data);
-      
       const errorMessage = error.response?.data?.error || 'Chyba při odesílání objednávky. Zkuste to znovu.';
       showError(errorMessage);
     } finally {
@@ -98,14 +97,13 @@ const Checkout = () => {
     }
   };
 
-  // POKUD JE KOŠÍK PRÁZDNÝ - POUŽIJ useEffect
+  // POKUD JE KOŠÍK PRÁZDNÝ
   useEffect(() => {
     if (items.length === 0) {
       navigate('/cart');
     }
   }, [items.length, navigate]);
 
-  // POKUD JE KOŠÍK PRÁZDNÝ - ZOBRAZÍ LOADING
   if (items.length === 0) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -121,7 +119,6 @@ const Checkout = () => {
     <div className="min-h-screen bg-gray-50 py-4 sm:py-8">
       <div className="max-w-6xl mx-auto px-4">
         
-        {/* MOBILNÍ HLAVIČKA */}
         <div className="flex items-center justify-between mb-6 sm:mb-8">
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">
             Dokončení objednávky
@@ -136,10 +133,8 @@ const Checkout = () => {
           </button>
         </div>
 
-        {/* MOBILNÍ LAYOUT - na mobilu stack, na desktopu grid */}
         <div className="space-y-6 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-8">
           
-          {/* FORMULÁŘ OBJEDNÁVKY */}
           <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6">
             <h2 className="text-lg sm:text-xl font-semibold text-gray-800 mb-4 sm:mb-6">
               Údaje objednávky
@@ -147,14 +142,13 @@ const Checkout = () => {
 
             <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
 
-              {/* VÝBĚR TYPU OBJEDNÁVKY - MOBILNÍ OPTIMALIZOVANÉ */}
+              {/* VÝBĚR TYPU OBJEDNÁVKY */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-3">
                   Způsob předání
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   
-                  {/* ROZVOZ OPTION */}
                   <label className="relative cursor-pointer touch-manipulation">
                     <input
                       type="radio"
@@ -187,7 +181,6 @@ const Checkout = () => {
                     </div>
                   </label>
 
-                  {/* PICKUP OPTION */}
                   <label className="relative cursor-pointer touch-manipulation">
                     <input
                       type="radio"
@@ -226,7 +219,6 @@ const Checkout = () => {
               <div className="space-y-4">
                 <h3 className="font-medium text-gray-800">Kontaktní údaje</h3>
                 
-                {/* JMÉNO A TELEFON - NA MOBILU POD SEBOU */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -259,7 +251,6 @@ const Checkout = () => {
                   </div>
                 </div>
 
-                {/* EMAIL */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Email (volitelný)
@@ -278,7 +269,14 @@ const Checkout = () => {
               {/* DORUČOVACÍ ADRESA - POUZE PRO ROZVOZ */}
               {orderType === 'delivery' && (
                 <div className="space-y-4">
-                  <h3 className="font-medium text-gray-800">Doručovací adresa</h3>
+                  <h3 className="font-medium text-gray-800">
+                    Doručovací adresa
+                    {user && user.address && (
+                      <span className="text-sm text-green-600 ml-2">
+                        (předvyplněno z profilu)
+                      </span>
+                    )}
+                  </h3>
                   
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -291,7 +289,7 @@ const Checkout = () => {
                       onChange={handleChange}
                       required={orderType === 'delivery'}
                       className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-base"
-                      placeholder="Wenceslas Square 1"
+                      placeholder="Václavské náměstí 1"
                     />
                   </div>
 
@@ -327,7 +325,7 @@ const Checkout = () => {
                 />
               </div>
 
-              {/* SUBMIT TLAČÍTKO - POUZE NA MOBILU VIDITELNÉ */}
+              {/* SUBMIT TLAČÍTKO */}
               <div className="block lg:hidden">
                 <button 
                   type="submit" 
@@ -343,23 +341,20 @@ const Checkout = () => {
                       Odesílám objednávku...
                     </>
                   ) : (
-                    <>
-                      🛒 Objednat za {finalPrice} Kč
-                    </>
+                    <>🛒 Objednat za {finalPrice} Kč</>
                   )}
                 </button>
               </div>
             </form>
           </div>
 
-          {/* SHRNUTÍ OBJEDNÁVKY - STICKY NA DESKTOPU */}
+          {/* SHRNUTÍ OBJEDNÁVKY */}
           <div className="lg:sticky lg:top-4">
             <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6">
               <h3 className="text-lg font-semibold text-gray-800 mb-4">
                 Shrnutí objednávky
               </h3>
 
-              {/* SEZNAM POLOŽEK */}
               <div className="space-y-3 mb-6">
                 {items.map((item) => (
                   <div key={item.id} className="flex items-center space-x-3">
@@ -391,7 +386,6 @@ const Checkout = () => {
 
               <hr className="my-4" />
 
-              {/* KALKULACE CENY */}
               <div className="space-y-2 mb-6">
                 <div className="flex justify-between text-gray-600">
                   <span>Pizzy:</span>
@@ -413,11 +407,9 @@ const Checkout = () => {
                 </div>
               </div>
 
-              {/* DESKTOP SUBMIT TLAČÍTKO */}
               <div className="hidden lg:block">
                 <button 
                   type="submit" 
-                  form="checkout-form"
                   disabled={loading}
                   className="btn btn-primary w-full py-4 text-base font-semibold touch-manipulation"
                   onClick={handleSubmit}
@@ -431,20 +423,17 @@ const Checkout = () => {
                       Odesílám objednávku...
                     </>
                   ) : (
-                    <>
-                      🛒 Objednat za {finalPrice} Kč
-                    </>
+                    <>🛒 Objednat za {finalPrice} Kč</>
                   )}
                 </button>
               </div>
 
-              {/* INFO SEKCE */}
               <div className="mt-6 pt-4 border-t border-gray-200 text-xs text-gray-500 text-center">
                 <p>📞 Máte dotazy? Volejte: 722 272 252</p>
                 <p className="mt-1">🕐 Po - So: 17:00 - 20:30</p>
                 {orderType === 'pickup' && (
                   <p className="mt-2 text-primary-600">
-                    📍 Vyzvednutí: Hany Kvapilové 19, Praha 4
+                    📍 Vyzvednutí: Karlova 15, Praha 1
                   </p>
                 )}
               </div>
